@@ -27,6 +27,93 @@ void simulateur(void) {
 
 /******************************************************************************/
 
+void calcul_min(int rank) {
+   // Initialization
+   MPI_Status status;
+   int flag;
+
+   int nb_neighbors;
+   MPI_Recv(&nb_neighbors, 1, MPI_INT, 0, TAGINIT, MPI_COMM_WORLD, &status);
+
+   // Array containing all of this node's neighbors
+   int neighbors[nb_neighbors];
+   MPI_Recv(&neighbors, nb_neighbors, MPI_INT, 0, TAGINIT, MPI_COMM_WORLD, &status);
+   // Array to keep in check which neighbor this node received from
+   int received[nb_neighbors];
+   for (int i = 0; i < nb_neighbors; i++)
+      received[i] = 0;
+
+   // Initializing the minimum from this node's perspective (+ the node that has it)
+   int min;
+   int min_rank = rank;
+   MPI_Recv(&min, 1, MPI_INT, 0, TAGINIT, MPI_COMM_WORLD, &status);
+
+
+   if (rank == 1) {
+      // Arbitrary initiator => ID 1
+
+      // Sending the initiator's value to all of its neighbors
+      for (int i = 0; i < nb_neighbors; i++)
+         MPI_Send(&min, 1, MPI_INT, neighbors[i], rank, MPI_COMM_WORLD);
+      for (int i = 0; i < nb_neighbors; i++) {
+         int min_remote;
+         MPI_Recv(&min_remote, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+         if (min_remote < min) {
+            min = min_remote;
+            min_rank = status.MPI_TAG;
+         }
+      }
+      // Send decision to children
+      fprintf(stdout, "ID %d : min = %d on peer of ID %d\n", rank, min, min_rank);
+      for (int i = 0; i < nb_neighbors; i++)
+         MPI_Send(&min, 1, MPI_INT, neighbors[i], min_rank, MPI_COMM_WORLD);
+   } else {
+      // Not initiator
+      int parent = -1;
+
+      // Getting first wave
+      int min_remote;
+      MPI_Recv(&min_remote, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      if (min_remote < min) {
+         min = min_remote;
+         min_rank = status.MPI_TAG;
+      }
+      parent = status.MPI_SOURCE;
+
+      // Relaying first wave
+      for (int i = 0; i < nb_neighbors; i++) {
+         if (neighbors[i] != parent)
+            MPI_Send(&min, 1, MPI_INT, neighbors[i], min_rank, MPI_COMM_WORLD);
+      }
+
+      // Getting the answer of the edges
+      for (int i = 0; i < nb_neighbors; i++) {
+         if (neighbors[i] == parent)
+            continue;
+         MPI_Recv(&min_remote, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+         if (min_remote < min) {
+            min = min_remote;
+            min_rank = status.MPI_TAG;
+         }
+      }
+
+      // Relaying to parent
+      MPI_Send(&min, 1, MPI_INT, parent, min_rank, MPI_COMM_WORLD);
+
+      // Getting final answer and relaying it to neighbors
+      MPI_Recv(&min, 1, MPI_INT, parent, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      min_rank = status.MPI_TAG;
+      fprintf(stdout, "ID %d : min = %d on peer of ID %d\n", rank, min, min_rank);
+      for (int i = 0; i < nb_neighbors; i++) {
+         if (neighbors[i] == parent)
+            continue;
+         MPI_Send(&min, 1, MPI_INT, neighbors[i], min_rank, MPI_COMM_WORLD);
+      }
+   }
+}
+
+/******************************************************************************/
+
 int main (int argc, char* argv[]) {
    int nb_proc,rang;
    MPI_Init(&argc, &argv);

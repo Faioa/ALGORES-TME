@@ -25,11 +25,8 @@ void simulateur(void) {
    }
 }
 
-void calcul_min(int rang) {
+void calcul_min(int rank) {
       // Initialization
-      int my_rank;
-      MPI_Comm_rank(MPI_COMM_WORLD,&my_rank);
-
       MPI_Status status;
       int flag;
 
@@ -46,7 +43,7 @@ void calcul_min(int rang) {
 
       // Initializing the minimum from this node's perspective (+ the node that has it)
       int min;
-      int min_rank = my_rank;
+      int min_rank = rank;
       MPI_Recv(&min, 1, MPI_INT, 0, TAGINIT, MPI_COMM_WORLD, &status);
 
       // Number of messages received (to save complexity on iteration over the array received
@@ -93,7 +90,7 @@ void calcul_min(int rang) {
       }
 
       // Send decision to children (last message received should be from this node's parent so we omit it)
-      fprintf(stdout, "ID %d : min = %d on peer of ID %d\n", my_rank, min, min_rank);
+      fprintf(stdout, "ID %d : min = %d on peer of ID %d\n", rank, min, min_rank);
       for (int i = 0; i < nb_neighbors; i++) {
             if (neighbors[i] != status.MPI_SOURCE) {
                   MPI_Send(&min, 1, MPI_INT, neighbors[i], min_rank, MPI_COMM_WORLD);
